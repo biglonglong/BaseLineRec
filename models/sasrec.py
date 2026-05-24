@@ -69,7 +69,9 @@ class MultiHeadAttentionwithPreLNwithResidual(nn.Module):
 
         # Ateention Matrix
         if mask is not None:
-            scores = scores.masked_fill(mask, float("-inf"))
+            # Use a large negative value instead of -inf. Setting -inf can
+            # produce NaNs from softmax when an entire row is masked.
+            scores = scores.masked_fill(mask, -1e9)
         attn_weights = torch.softmax(scores, dim=-1)
         dropout_attn_weights = self.atten_dropout(attn_weights)
 
@@ -249,7 +251,9 @@ class SASRec(nn.Module):
         else:
             # Full CE Loss for small dataset
             logits = torch.matmul(hidden, self.item_embedding.weight.T)  # [B, L, I+1]
-            logits[:, :, self.pad_idx] = float("-inf")
+            # Avoid using -inf here for the same reason as above. Use a large
+            # negative finite value so log-softmax remains numerically stable.
+            logits[:, :, self.pad_idx] = -1e9
 
             loss_per_step = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),  # [B*L, I+1]

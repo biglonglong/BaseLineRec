@@ -1,8 +1,10 @@
 import time
+import logging
 import torch
 import random
 import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
 from models.sasrec import SASRec
@@ -25,6 +27,40 @@ def get_num_items(info_path: Path) -> int:
     return len(lines)
 
 
+def plot_metrics(all_loss, all_hr, all_ndcg, timestamp):
+    epochs = range(1, len(all_loss) + 1)
+
+    plt.figure(figsize=(12, 4))
+
+    # Plot loss
+    plt.subplot(1, 3, 1)
+    plt.plot(epochs, all_loss, label="Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training Loss")
+    plt.legend()
+
+    # Plot HR
+    plt.subplot(1, 3, 2)
+    plt.plot(epochs, all_hr, label="HR", color="orange")
+    plt.xlabel("Epoch")
+    plt.ylabel("HR")
+    plt.title("Validation Hit Rate")
+    plt.legend()
+
+    # Plot NDCG
+    plt.subplot(1, 3, 3)
+    plt.plot(epochs, all_ndcg, label="NDCG", color="green")
+    plt.xlabel("Epoch")
+    plt.ylabel("NDCG")
+    plt.title("Validation NDCG")
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig(f"metrics_{timestamp}.png")
+    # plt.show()
+
+
 # ==================== CONFIG ====================
 # RAW DATA PATHS
 DATA_INFO = Path("./data/Amazon/info/Industrial_and_Scientific_5_2016-10-2018-11.txt")
@@ -34,9 +70,9 @@ TEST_DATA = Path("./data/Amazon/test/Industrial_and_Scientific_5_2016-10-2018-11
 
 # TRAINING CONFIG
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-EPOCHS = 5
+EPOCHS = 80
 BATCH_SIZE = 128
-LR = 1e-3
+LR = 2e-4
 WEIGHT_DECAY = 0.01
 GRADIENT_CLIP = 1.0
 USE_SCHEDULER = True
@@ -46,24 +82,32 @@ SEED = 42
 PAD_IDX = 0
 MAX_LEN = 10
 NUM_ITEMS = get_num_items(DATA_INFO)
-NUM_NEGATIVES = 4
+NUM_NEGATIVES = 3
 TOP_KS = [1, 3, 5, 10]
 
 # MODEL CONFIG
 model_name = "SASRec"
 sasrec_config = {
     "num_items": NUM_ITEMS,
-    "d_model": 128,
+    "d_model": 512,
     "max_len": MAX_LEN,
-    "n_heads": 4,
-    "d_ff": 512,
-    "dropout": 0.1,
-    "n_layers": 2,
+    "n_heads": 8,
+    "d_ff": 2048,
+    "dropout": 0.2,
+    "n_layers": 4,
     "pad_idx": PAD_IDX,
 }
 
 if __name__ == "__main__":
     set_seed(SEED)
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("baseline_rec")
+    fh = logging.FileHandler(f"training_{timestamp}.log")
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    logger.addHandler(fh)
+
     print(f"num_items: {NUM_ITEMS}, device: {DEVICE}")
 
     train_dataset = SequenceDataset(
@@ -125,25 +169,33 @@ if __name__ == "__main__":
     )
 
     best_hr = 0.0
+    all_loss = []
+    all_hr = []
+    all_ndcg = []
     for epoch in range(EPOCHS):
         # training
         loss = trainer.train_epoch(dataloader=train_loader)
-        print(f"Epoch {epoch+1}, Loss: {loss:.4f}")
+        all_loss.append(loss)
+        logger.info(f"Epoch {epoch+1}, Loss: {loss:.4f}")
 
         # evaluation
         val_metrics = trainer.evaluate(dataloader=valid_loader, k=max(TOP_KS))
         hr = val_metrics.get(f"HR@{max(TOP_KS)}", 0)
         ndcg = val_metrics.get(f"NDCG@{max(TOP_KS)}", 0)
-        print(f"  Valid HR@{max(TOP_KS)}: {hr:.4f}, NDCG@{max(TOP_KS)}: {ndcg:.4f}")
+        all_hr.append(hr)
+        all_ndcg.append(ndcg)
+        logger.info(
+            f"  Valid HR@{max(TOP_KS)}: {hr:.4f}, NDCG@{max(TOP_KS)}: {ndcg:.4f}"
+        )
 
         if hr > best_hr:
             best_hr = hr
-            trainer.save_checkpoint(f"{model_name}_best_hr.pth")
-            print(f"  ✔ New best model saved (HR@{max(TOP_KS)}={hr:.4f})")
+            trainer.save_checkpoint(f"{model_name}_best_hr_{timestamp}.pth")
+            logger.info(f"  ✔ New best model saved (HR@{max(TOP_KS)}={hr:.4f})")
 
-    trainer.load_checkpoint(f"{model_name}_best_hr.pth")
-    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-    results_file = f"SASRec_final_results_{timestamp}.txt"
+    plot_metrics(all_loss, all_hr, all_ndcg, timestamp)
+    trainer.load_checkpoint(f"{model_name}_best_hr_{timestamp}.pth")
+    results_file = f"SASRec_final_{timestamp}.res"
 
     with open(results_file, "w") as f:
         for k in TOP_KS:

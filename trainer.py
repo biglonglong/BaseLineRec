@@ -128,7 +128,7 @@ class SequenceModelTrainer:
         top_k = torch.topk(prediction_logits, k, dim=1).indices
         is_hit = top_k == targets.unsqueeze(1)
 
-        ranks = is_hit.float().argmax(dim=1) + 1
+        ranks = is_hit.float().argmax(dim=1).float() + 1
         ranks[~is_hit.any(dim=1)] = float("inf")
 
         # idcg = 1 / torch.log2(torch.arange(2, k + 2, device=targets.device).float())
