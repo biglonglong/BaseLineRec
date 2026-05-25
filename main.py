@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
 from models.sasrec import SASRec
+from models.gru4rec import GRU4Rec
 from trainer import SequenceModelTrainer
 from dataset import SequenceDataset
 
@@ -70,32 +71,55 @@ TEST_DATA = Path("./data/Amazon/test/Industrial_and_Scientific_5_2016-10-2018-11
 
 # TRAINING CONFIG
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-EPOCHS = 80
-BATCH_SIZE = 128
-LR = 2e-4
-WEIGHT_DECAY = 0.01
+EPOCHS = 50
+BATCH_SIZE = 256
+LR = 1e-3
+WEIGHT_DECAY = 1e-5
 GRADIENT_CLIP = 1.0
 USE_SCHEDULER = True
 
 # OTHER CONFIG
 SEED = 42
-PAD_IDX = 0
-MAX_LEN = 10
 NUM_ITEMS = get_num_items(DATA_INFO)
-NUM_NEGATIVES = 3
+MAX_LEN = 10
+PAD_IDX = NUM_ITEMS
+NUM_NEGATIVES = 0
 TOP_KS = [1, 3, 5, 10]
 
 # MODEL CONFIG
-model_name = "SASRec"
+# model_name = "SASRec"
+model_name = "GRU4Rec"
+"""
+EPOCHS = 30
+BATCH_SIZE = 128
+LR = 2e-4
+WEIGHT_DECAY = 0.01
+NUM_NEGATIVES = 3
+"""
 sasrec_config = {
     "num_items": NUM_ITEMS,
     "d_model": 512,
     "max_len": MAX_LEN,
+    "dropout": 0.2,
+    "pad_idx": PAD_IDX,
     "n_heads": 8,
     "d_ff": 2048,
-    "dropout": 0.2,
     "n_layers": 4,
+}
+"""
+EPOCHS = 30
+BATCH_SIZE = 128
+LR = 2e-4
+WEIGHT_DECAY = 0.01
+NUM_NEGATIVES = 3
+"""
+gru4rec_config = {
+    "num_items": NUM_ITEMS,
+    "d_model": 256,
+    "max_len": MAX_LEN,
+    "dropout": 0.2,
     "pad_idx": PAD_IDX,
+    "n_layers": 2,
 }
 
 if __name__ == "__main__":
@@ -155,6 +179,8 @@ if __name__ == "__main__":
 
     if model_name == "SASRec":
         model = SASRec(**sasrec_config).to(DEVICE)
+    elif model_name == "GRU4Rec":
+        model = GRU4Rec(**gru4rec_config).to(DEVICE)
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
@@ -195,7 +221,7 @@ if __name__ == "__main__":
 
     plot_metrics(all_loss, all_hr, all_ndcg, timestamp)
     trainer.load_checkpoint(f"{model_name}_best_hr_{timestamp}.pth")
-    results_file = f"SASRec_final_{timestamp}.res"
+    results_file = f"{model_name}_final_{timestamp}.res"
 
     with open(results_file, "w") as f:
         for k in TOP_KS:
