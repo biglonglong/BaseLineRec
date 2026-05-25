@@ -120,7 +120,9 @@ class BaseSequentialRecModel(nn.Module, ABC):
             If candidate_ids is None: [batch_size, num_items+1] - Logits for all items
             If candidate_ids is provided: [batch_size, num_candidates] - Scores for candidate items
         """
-        hidden = self._encode(seq)[:, -1, :]  # Only take the last position's logits
+        hidden = self._encode(seq)
+        if hidden.dim() == 3:
+            hidden = hidden[:, -1, :]  # Only take the last position's logits
 
         # logits: [batch_size, seq_len, num_candidates]
         if candidate_ids is not None:

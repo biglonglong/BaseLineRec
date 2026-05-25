@@ -1,7 +1,8 @@
 import time
-import logging
 import torch
 import random
+import logging
+import argparse
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -29,7 +30,7 @@ def get_num_items(info_path: Path) -> int:
     return len(lines)
 
 
-def plot_metrics(all_loss, all_hr, all_ndcg, timestamp):
+def plot_metrics(all_loss, all_hr, all_ndcg, timestamp, model_name):
     epochs = range(1, len(all_loss) + 1)
 
     plt.figure(figsize=(12, 4))
@@ -59,7 +60,7 @@ def plot_metrics(all_loss, all_hr, all_ndcg, timestamp):
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig(f"metrics_{timestamp}.png")
+    plt.savefig(f"{model_name}_metrics_{timestamp}.png")
     # plt.show()
 
 
@@ -72,32 +73,13 @@ TEST_DATA = Path("./data/Amazon/test/Industrial_and_Scientific_5_2016-10-2018-11
 
 # TRAINING CONFIG
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-EPOCHS = 50
-BATCH_SIZE = 256
-LR = 1e-3
-WEIGHT_DECAY = 1e-5
-GRADIENT_CLIP = 1.0
-USE_SCHEDULER = True
-
-# OTHER CONFIG
 SEED = 42
 NUM_ITEMS = get_num_items(DATA_INFO)
 MAX_LEN = 10
 PAD_IDX = NUM_ITEMS
-NUM_NEGATIVES = 0
 TOP_KS = [1, 3, 5, 10]
 
 # MODEL CONFIG
-# model_name = "SASRec"
-model_name = "GRU4Rec"
-model_name = "Caser"
-"""
-EPOCHS = 30
-BATCH_SIZE = 128
-LR = 2e-4
-WEIGHT_DECAY = 0.01
-NUM_NEGATIVES = 3
-"""
 sasrec_config = {
     "num_items": NUM_ITEMS,
     "d_model": 512,
@@ -108,28 +90,14 @@ sasrec_config = {
     "d_ff": 2048,
     "n_layers": 4,
 }
-"""
-EPOCHS = 30
-BATCH_SIZE = 128
-LR = 2e-4
-WEIGHT_DECAY = 0.01
-NUM_NEGATIVES = 3
-"""
 gru4rec_config = {
     "num_items": NUM_ITEMS,
-    "d_model": 256,
+    "d_model": 128,
     "max_len": MAX_LEN,
-    "dropout": 0.2,
+    "dropout": 0.3,
     "pad_idx": PAD_IDX,
     "n_layers": 2,
 }
-"""
-EPOCHS = 30
-BATCH_SIZE = 128
-LR = 2e-4
-WEIGHT_DECAY = 0.01
-NUM_NEGATIVES = 3
-"""
 caser_config = {
     "num_items": NUM_ITEMS,
     "d_model": 256,
@@ -140,12 +108,22 @@ caser_config = {
     "filter_sizes": [2, 3, 4],
 }
 
-if __name__ == "__main__":
+
+def main(
+    model_name,
+    num_negatives,
+    epochs,
+    batch_size,
+    lr,
+    weight_decay,
+    gradient_clip,
+    use_scheduler,
+):
     set_seed(SEED)
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("baseline_rec")
-    fh = logging.FileHandler(f"training_{timestamp}.log")
+    fh = logging.FileHandler(f"{model_name}_training_{timestamp}.log")
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
     logger.addHandler(fh)
@@ -156,7 +134,7 @@ if __name__ == "__main__":
         TRAIN_DATA,
         max_len=MAX_LEN,
         pad_idx=PAD_IDX,
-        num_negatives=NUM_NEGATIVES,
+        num_negatives=num_negatives,
         num_items=NUM_ITEMS,
     )
     valid_dataset = SequenceDataset(
@@ -175,21 +153,21 @@ if __name__ == "__main__":
     )
     train_loader = DataLoader(
         train_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=True,
         num_workers=4,
         pin_memory=True,
     )
     valid_loader = DataLoader(
         valid_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=4,
         pin_memory=True,
     )
     test_loader = DataLoader(
         test_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=4,
         pin_memory=True,
@@ -206,19 +184,19 @@ if __name__ == "__main__":
 
     trainer = SequenceModelTrainer(
         model,
-        learning_rate=LR,
-        weight_decay=WEIGHT_DECAY,
+        learning_rate=lr,
+        weight_decay=weight_decay,
         device=DEVICE,
-        use_scheduler=USE_SCHEDULER,
-        gradient_clip=GRADIENT_CLIP,
-        num_epochs=EPOCHS,
+        use_scheduler=use_scheduler,
+        gradient_clip=gradient_clip,
+        num_epochs=epochs,
     )
 
     best_hr = 0.0
     all_loss = []
     all_hr = []
     all_ndcg = []
-    for epoch in range(EPOCHS):
+    for epoch in range(epochs):
         # training
         loss = trainer.train_epoch(dataloader=train_loader)
         all_loss.append(loss)
@@ -239,7 +217,7 @@ if __name__ == "__main__":
             trainer.save_checkpoint(f"{model_name}_best_hr_{timestamp}.pth")
             logger.info(f"  ✔ New best model saved (HR@{max(TOP_KS)}={hr:.4f})")
 
-    plot_metrics(all_loss, all_hr, all_ndcg, timestamp)
+    plot_metrics(all_loss, all_hr, all_ndcg, timestamp, model_name)
     trainer.load_checkpoint(f"{model_name}_best_hr_{timestamp}.pth")
     results_file = f"{model_name}_final_{timestamp}.res"
 
@@ -253,3 +231,32 @@ if __name__ == "__main__":
             f.write(line + "\n")
 
     print(f"\nResults saved to {results_file}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Training Configuration")
+    parser.add_argument(
+        "--model", type=str, default="SASRec", choices=["SASRec", "GRU4Rec", "Caser"]
+    )
+    parser.add_argument("--num_negatives", type=int, default=3)
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--lr", type=float, default=2e-4)
+    parser.add_argument("--weight_decay", type=float, default=5e-3)
+    parser.add_argument("--gradient_clip", type=float, default=1.0)
+    parser.add_argument("--disable_scheduler", action="store_true")
+    args = parser.parse_args()
+
+    main(
+        model_name=args.model,
+        num_negatives=args.num_negatives,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        gradient_clip=args.gradient_clip,
+        use_scheduler=not args.disable_scheduler,
+    )
+    # python3 main.py --model SASRec
+    # python3 main.py --model GRU4Rec --epochs 30 --lr 5e-4 --weight_decay 5e-5
+    # python3 main.py --model Caser --epochs 50 --lr 1e-3 --weight_decay 1e-5
