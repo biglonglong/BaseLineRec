@@ -60,7 +60,14 @@ class BaseSequentialRecModel(nn.Module, ABC):
         Returns:
             loss: scalar tensor
         """
-        hidden = self._encode(seq)
+        hidden = self._encode(seq)  # Can be [B, D] or [B, L, D]
+
+        # when hidden is [B, D], we are doing next-item prediction for the last position only
+        if hidden.dim() == 2:
+            hidden = hidden.unsqueeze(1)  # [B, 1, D]
+            target_ids = target_ids[:, -1:]  # [B, 1]
+            if neg_target_ids is not None:
+                neg_target_ids = neg_target_ids[:, -1:, :]  # [B, 1, K]
 
         valid_mask = (target_ids != self.pad_idx).float()
         num_valid = valid_mask.sum()

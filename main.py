@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 
 from models.sasrec import SASRec
 from models.gru4rec import GRU4Rec
+from models.caser import Caser
 from trainer import SequenceModelTrainer
 from dataset import SequenceDataset
 
@@ -89,6 +90,7 @@ TOP_KS = [1, 3, 5, 10]
 # MODEL CONFIG
 # model_name = "SASRec"
 model_name = "GRU4Rec"
+model_name = "Caser"
 """
 EPOCHS = 30
 BATCH_SIZE = 128
@@ -120,6 +122,22 @@ gru4rec_config = {
     "dropout": 0.2,
     "pad_idx": PAD_IDX,
     "n_layers": 2,
+}
+"""
+EPOCHS = 30
+BATCH_SIZE = 128
+LR = 2e-4
+WEIGHT_DECAY = 0.01
+NUM_NEGATIVES = 3
+"""
+caser_config = {
+    "num_items": NUM_ITEMS,
+    "d_model": 256,
+    "max_len": MAX_LEN,
+    "dropout": 0.2,
+    "pad_idx": PAD_IDX,
+    "num_filters": 16,
+    "filter_sizes": [2, 3, 4],
 }
 
 if __name__ == "__main__":
@@ -181,6 +199,8 @@ if __name__ == "__main__":
         model = SASRec(**sasrec_config).to(DEVICE)
     elif model_name == "GRU4Rec":
         model = GRU4Rec(**gru4rec_config).to(DEVICE)
+    elif model_name == "Caser":
+        model = Caser(**caser_config).to(DEVICE)
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
