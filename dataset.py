@@ -67,22 +67,18 @@ class SequenceDataset(Dataset):
         if self.num_negatives <= 0:
             return seq, target
 
+        # neg per timestamp independently
         k = self.num_negatives
-        pos_set = set(target[target != self.pad_idx].tolist())
-        neg_ids = []
-        while len(neg_ids) < k:
-            candidate = random.randint(1, self.num_items - 1)
-            if candidate not in pos_set:
-                neg_ids.append(candidate)
-
-        # share neg per timestamp
-        valid_mask = target != self.pad_idx
         neg_target = torch.full((self.max_len, k), self.pad_idx, dtype=torch.long)
-        neg_target[valid_mask] = (
-            torch.tensor(neg_ids, dtype=torch.long)
-            .unsqueeze(0)
-            .expand(valid_mask.sum(), -1)
-        )
+        for t in range(self.max_len):
+            if target[t] != self.pad_idx:
+                neg_ids = []
+                while len(neg_ids) < k:
+                    candidate = random.randint(1, self.num_items - 1)
+                    if candidate != target[t].item() and candidate not in neg_ids:
+                        neg_ids.append(candidate)
+
+                neg_target[t] = torch.tensor(neg_ids)
 
         return seq, target, neg_target
 
