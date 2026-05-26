@@ -1,5 +1,5 @@
 __pycache__
-*.log
-*.png
-*.res
-*.pth
+/*.log
+/*.png
+/*.res
+/*.pth
